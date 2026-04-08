@@ -3,7 +3,7 @@ import type { Participante } from "@/types";
 
 interface Props {
   existingEmails: string[];
-  onImport: (csvData: string, updateExisting: boolean) => { importados: number; actualizados: number; omitidos: number } | void;
+  onImport: (csvData: string, updateExisting: boolean) => Promise<any>;
   onClose: () => void;
 }
 
@@ -39,7 +39,13 @@ const BulkUploadModal = ({ existingEmails, onImport, onClose }: Props) => {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return { rows: [], headers: [], duplicates: [], errors: ["El archivo está vacío o no tiene filas de datos."] };
 
-    const headers = lines[0].split(";").map(h => h.trim().replace(/^"|"$/g, ""));
+    // Detectar delimitador (punto y coma o coma)
+    const firstLine = lines[0];
+    const semiColons = (firstLine.match(/;/g) || []).length;
+    const commas = (firstLine.match(/,/g) || []).length;
+    const delimiter = semiColons >= commas ? ";" : ",";
+
+    const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ""));
     const rows: ParsedRow[] = [];
     const duplicates: string[] = [];
     const errors: string[] = [];
@@ -64,16 +70,16 @@ const BulkUploadModal = ({ existingEmails, onImport, onClose }: Props) => {
     const colPerfil = findCol(["perfil", "profile"]);
 
     if (colCorreo === -1) {
-      errors.push("No se encontró una columna de correo electrónico ('Correo participante').");
+      errors.push("No se encontró una columna de correo electrónico ('Correo').");
       return { rows: [], headers, duplicates, errors };
     }
     if (colNombre === -1 && colCorto === -1) {
-      errors.push("No se encontró una columna de nombre ('Nombre participante' o 'Nombre para correo').");
+      errors.push("No se encontró una columna de nombre ('Nombre completo').");
       return { rows: [], headers, duplicates, errors };
     }
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(";").map(c => c.trim().replace(/^"|"$/g, ""));
+      const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ""));
       const correo = cols[colCorreo]?.trim() || "";
       if (!correo) continue;
 
@@ -90,7 +96,7 @@ const BulkUploadModal = ({ existingEmails, onImport, onClose }: Props) => {
         nombreCompleto: nombreCompleto || nombreCorto,
         correo,
         celular: colCelular >= 0 ? cols[colCelular] || "" : "",
-        esCliente: colCliente >= 0 && cols[colCliente] ? (cols[colCliente]?.toLowerCase() === "si" ? true : cols[colCliente]?.toLowerCase() === "no" ? false : null) : null,
+        esCliente: colCliente >= 0 && cols[colCliente] ? (cols[colCliente]?.toLowerCase().includes("s") ? true : cols[colCliente]?.toLowerCase().includes("n") ? false : null) : null,
         edad: edadRaw && !isNaN(edadRaw) ? edadRaw : null,
         segmento: colSegmento >= 0 ? cols[colSegmento] || null : null,
         producto: colProducto >= 0 ? cols[colProducto] || null : null,
@@ -121,14 +127,14 @@ const BulkUploadModal = ({ existingEmails, onImport, onClose }: Props) => {
     if (file) handleFile(file);
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!rawCsv) return;
-    onImport(rawCsv, updateExisting);
+    await onImport(rawCsv, updateExisting);
     setStep("done");
   };
 
   return (
-    <div className="modal animate-scale-in" style={{ width: 560 }}>
+    <div className="modal animate-scale-in" style={{ "--modal-width": "560px" } as React.CSSProperties}>
       <div className="modal__header">
         <h3>
           <i className="fa-solid fa-file-arrow-up" aria-hidden="true" style={{ marginRight: "var(--space-2)" }} />
