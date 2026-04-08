@@ -36,19 +36,41 @@ const ImportBonosModal = ({ onImport, onClose, existingGuids }: Props) => {
 
   const parseDate = (dStr: string) => {
     if (!dStr) return null;
-    // Asumimos formato DD/MM/YYYY o DD/MM/YYYY HH:mm
+    
+    // Si ya viene separado por guiones (YYYY-MM-DD o similar)
+    if (dStr.includes("-")) {
+      const parts = dStr.split("T")[0].split("-");
+      if (parts[0].length === 4) { // YYYY-MM-DD
+        return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      }
+      if (parts[2].length === 4) { // DD-MM-YYYY
+        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      }
+      return new Date(dStr);
+    }
+    
+    // Formato DD/MM/YYYY
     const parts = dStr.split(" ");
     const dateParts = parts[0].split("/");
-    if (dateParts.length < 3) return new Date();
-    // month is 0-indexed in JS Date
-    return new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+    if (dateParts.length >= 3) {
+      return new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+    }
+    
+    const tryDate = new Date(dStr);
+    return isNaN(tryDate.getTime()) ? new Date() : tryDate;
   };
 
   const parseCSV = (text: string): PreviewState => {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return { rows: [], headers: [], duplicates: [], errors: ["El archivo está vacío o no tiene filas de datos."] };
 
-    const headers = lines[0].split(";").map(h => h.trim().replace(/^"|"$/g, ""));
+    // Detectar delimitador
+    const firstLine = lines[0];
+    const semiColons = (firstLine.match(/;/g) || []).length;
+    const commas = (firstLine.match(/,/g) || []).length;
+    const delimiter = semiColons >= commas ? ";" : ",";
+
+    const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ""));
     const rows: ParsedBonoRow[] = [];
     const duplicates: string[] = [];
     const errors: string[] = [];
@@ -71,7 +93,7 @@ const ImportBonosModal = ({ onImport, onClose, existingGuids }: Props) => {
     }
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(";").map(c => c.trim().replace(/^"|"$/g, ""));
+      const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ""));
       const guid = cols[colGuid]?.trim() || "";
       if (!guid) continue;
 
