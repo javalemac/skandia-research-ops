@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useAppStore } from "@/store/appStore";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Participante, Plantilla } from "@/types";
 import ParticipantProfile from "@/components/participantes/ParticipantProfile";
 import NewParticipantModal from "@/components/participantes/NewParticipantModal";
@@ -14,6 +15,7 @@ const perfiles = ["Conservador", "Moderado", "Arriesgado", "Empowered", "Sin dat
 const clienteOpts = ["Sí", "No"] as const;
 
 const Participantes = () => {
+  const isMobile = useIsMobile();
   const { 
     participantes: data, 
     addParticipante, 
@@ -22,7 +24,8 @@ const Participantes = () => {
     marcarNoContactar,
     deleteParticipante,
     proyectos,
-    registrarEnvio
+    registrarEnvio,
+    isLoading
   } = useAppStore();
 
   const [search, setSearch] = useState("");
@@ -145,6 +148,17 @@ const Participantes = () => {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="loading-spinner" style={{ marginBottom: 'var(--space-4)' }}></div>
+          <p style={{ color: 'var(--text-secondary)' }}>Sincronizando con Supabase...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in">
       <div className="page-header">
@@ -211,6 +225,74 @@ const Participantes = () => {
           <button className="btn btn--primary" onClick={() => { setSearch(""); setFilters({ segmento: [], disponibilidad: [], perfil: [], cliente: [] }); }}>
             Limpiar filtros
           </button>
+        </div>
+      ) : isMobile ? (
+        <div className="mobile-list">
+          {filtered.map(p => {
+            const pct = Math.min((p.puntosAcumulados / 30) * 100, 100);
+            const complete = p.puntosAcumulados >= 30;
+            return (
+              <div key={p.id} className="mobile-card animate-fade-in" onClick={() => setSelectedProfile(p)}>
+                <div className="mobile-card__header">
+                  <div className="avatar avatar--md avatar--brand">{getInitials(p.nombreCompleto)}</div>
+                  <div className="data-table__name-text">
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+                      <span className="data-table__name-primary" style={{ fontWeight: "var(--fw-bold)" as any }}>{p.nombreCompleto}</span>
+                      {p.esCliente && <i className="fa-solid fa-crown" style={{ color: "var(--warning-dark)", fontSize: 10 }} />}
+                    </div>
+                    <span className="data-table__name-secondary">{p.correo}</span>
+                  </div>
+                  <div className="mobile-card__actions" onClick={(e) => e.stopPropagation()}>
+                    <div className="dropdown">
+                      <button className="btn btn--ghost btn--icon" onClick={() => setOpenMenuId(openMenuId === p.id ? null : p.id)}>
+                        <i className="fa-solid fa-ellipsis" />
+                      </button>
+                      {openMenuId === p.id && (
+                        <div className="dropdown__menu">
+                          <button className="dropdown__item" onClick={() => { setAddProjectTarget(p); setOpenMenuId(null); }}>
+                            <i className="fa-solid fa-folder-plus" /> Agregar a proyecto
+                          </button>
+                          <button className="dropdown__item" onClick={() => { setSendEmailTarget(p); setOpenMenuId(null); }}>
+                            <i className="fa-regular fa-envelope" /> Enviar correo
+                          </button>
+                          <button className="dropdown__item" onClick={() => { setEditTarget(p); setOpenMenuId(null); }}>
+                            <i className="fa-solid fa-pen" /> Editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mobile-card__body">
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Segmento</span>
+                     <span className="badge badge--neutral" style={{ fontSize: 10 }}>{p.segmento || "N/A"}</span>
+                   </div>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Consen.</span>
+                     <span className={`badge ${p.consentimiento === "Vigente" ? "badge--success" : "badge--warning"}`} style={{ fontSize: 10 }}>{p.consentimiento}</span>
+                   </div>
+                </div>
+
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Progreso Puntos</span>
+                    <span style={{ fontWeight: "var(--fw-bold)" as any, color: complete ? "var(--pg-d02)" : "var(--text-secondary)" }}>{p.puntosAcumulados} / 30 pts</span>
+                  </div>
+                  <div className="progress-bar" style={{ height: 6 }}>
+                    <div className={`progress-bar__fill ${complete ? "progress-bar__fill--complete" : ""}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+
+                <div className="mobile-card__footer">
+                   <span className={`badge ${p.disponibilidad === "Disponible" ? "badge--success" : "badge--error"}`} style={{ padding: "4px 8px" }}>
+                    {p.disponibilidad}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -351,8 +433,8 @@ const Participantes = () => {
           <div className="overlay" onClick={() => setShowBulkUpload(false)} />
           <BulkUploadModal
             existingEmails={data.map(p => p.correo.toLowerCase())}
-            onImport={(csvData: string, updateExisting: boolean) => {
-              const result = importarParticipantes(csvData, updateExisting);
+            onImport={async (csvData: string, updateExisting: boolean) => {
+              const result = await importarParticipantes(csvData, updateExisting);
               if (result) {
                 toast.success("Importación finalizada", { 
                   description: `Importados: ${result.importados}, Actualizados: ${result.actualizados}, Omitidos: ${result.omitidos}` 
@@ -379,7 +461,7 @@ const Participantes = () => {
       {addProjectTarget && (
         <>
           <div className="overlay" onClick={() => setAddProjectTarget(null)} />
-          <div className="modal" style={{ width: 400 }}>
+          <div className="modal" style={{ "--modal-width": "400px" } as React.CSSProperties}>
             <div className="modal__header">
               <h3>Agregar a proyecto</h3>
               <button className="btn btn--ghost btn--icon" onClick={() => setAddProjectTarget(null)}>
